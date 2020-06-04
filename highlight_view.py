@@ -895,15 +895,20 @@ def open_tooltip(view, point, line_report=False):
     if not errors:
         return
 
+    tooltip_message, quick_actions = join_msgs(errors, show_count=line_report, width=80, pt=point)
+
     def on_navigate(href: str) -> None:
         if href == "copy":
             sublime.set_clipboard(join_msgs_raw(errors))
             window = view.window()
             if window:
                 window.status_message("SublimeLinter: info copied to clipboard")
-            view.hide_popup()
+        else:
+            fixer = quick_actions[href]
+            fixer(view)
 
-    tooltip_message = join_msgs(errors, show_count=line_report, width=80)
+        view.hide_popup()
+
     view.show_popup(
         TOOLTIP_TEMPLATE.format(stylesheet=TOOLTIP_STYLES, content=tooltip_message),
         flags=sublime.HIDE_ON_MOUSE_MOVE_AWAY,
@@ -926,7 +931,7 @@ def join_msgs_raw(errors):
     )
 
 
-def join_msgs(errors, show_count, width):
+def join_msgs(errors, show_count, width, pt):
     if show_count:
         part = '''
             <div class="{classname}">{count} {heading}</div>
@@ -953,6 +958,7 @@ def join_msgs(errors, show_count, width):
             return error_type
 
     all_msgs = ""
+    quick_actions = {}  # type: Dict[str, Callable]
     for error_type in sorted(grouped_by_type.keys(), key=sort_by_type):
         errors_by_type = sorted(
             grouped_by_type[error_type],
@@ -983,7 +989,11 @@ def join_msgs(errors, show_count, width):
             lines[0] = lines[0].lstrip()
             lines = list(map(escape_text, lines))
             lines[0] = first_line_prefix + lines[0]
-            lines[-1] = lines[-1] + ' <a href="ignore">Ignore</a>'
+            action = next(actions_for_error(error, pt), None)
+            if action:
+                id = uuid.uuid4().hex
+                quick_actions[id] = action.fn
+                lines[-1] = lines[-1] + ' <a href="{}">Ignore</a>'.format(id)
 
             filled_templates += lines
 
@@ -998,7 +1008,7 @@ def join_msgs(errors, show_count, width):
             heading=heading,
             messages='<br />'.join(filled_templates)
         )
-    return all_msgs
+    return all_msgs, quick_actions
 
 
 def escape_text(text):
@@ -1038,7 +1048,7 @@ class sl_fix_by_ignoring(sublime_plugin.TextCommand):
                 return
 
             action = actions[idx]
-            action.fn(cursor, view)
+            action.fn(view)
 
         window.show_quick_panel(
             [action.description for action in actions],
@@ -1054,12 +1064,12 @@ def available_actions_on_line(view, pt):
     return [
         action
         for error in errors
-        for action in actions_for_error(error)
+        for action in actions_for_error(error, pt)
     ]
 
 
-def actions_for_error(error):
-    # type: (LintError) -> Iterator[Action]
+def actions_for_error(error, pt):
+    # type: (LintError, int) -> Iterator[Action]
     linter_name = error['linter']
     if linter_name == "flake8":
         yield Action(
@@ -1069,6 +1079,7 @@ def actions_for_error(error):
                 "  # noqa: {}",
                 error["code"],
                 ", ",
+                pt
             )
         )
     elif linter_name == "mypy":
@@ -1079,6 +1090,7 @@ def actions_for_error(error):
                 "  # type: ignore[{}]",
                 error["code"],
                 ", ",
+                pt
             )
         )
 
