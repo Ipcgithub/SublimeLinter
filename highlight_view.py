@@ -1109,17 +1109,12 @@ def add_eol(pattern, rulename, joiner, pt, view):
         next_rules = [rule.strip() for rule in present_rules.split(joiner.strip())]
         if rulename not in next_rules:
             next_rules.append(rulename)
+        a, b = match.span(1)
+        replace_view_content(view, joiner.join(next_rules), sublime.Region(line_region.a + a, line_region.a + b))
     else:
         next_rules = [rulename]
-    formatted = pattern.format(joiner.join(next_rules))
-
-    if match:
-        a, b = match.span(0)
-        new_line_content = line_content[:a] + formatted + line_content[b:]
-    else:
-        new_line_content = line_content.rstrip() + formatted
-
-    replace_view_content(view, new_line_content, line_region)
+        formatted = pattern.format(joiner.join(next_rules))
+        replace_view_content(view, formatted, sublime.Region(line_region.a + len(line_content.rstrip()), line_region.b))
 
 
 # UTILS - generic replace_view_content implemenation
