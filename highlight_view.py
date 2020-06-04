@@ -961,26 +961,31 @@ def join_msgs(errors, show_count, width):
 
         filled_templates = []
         for error in errors_by_type:
-            prefix_len = len(error['linter']) + 2
+            first_line_prefix = "{linter}: ".format(**error)
+            hanging_indent = len(first_line_prefix)
+            if error.get("code"):
+                first_line_prefix += "{code} - ".format(**error)
+            first_line_indent = len(first_line_prefix)
+
             lines = list(flatten(
                 textwrap.wrap(
-                    (
-                        tmpl_with_code
-                        if n == 0 and error.get('code')
-                        else tmpl_sans_code
-                    ).format(msg_line=line, **error),
+                    msg_line,
                     width=width,
-                    initial_indent=" " * prefix_len,
-                    subsequent_indent=" " * prefix_len
+                    initial_indent=(
+                        " " * first_line_indent
+                        if n == 0
+                        else " " * hanging_indent
+                    ),
+                    subsequent_indent=" " * hanging_indent
                 )
-                for n, line in enumerate(error['msg'].splitlines())
+                for n, msg_line in enumerate(error['msg'].splitlines())
             ))
-            lines[0] = "{linter}: ".format(**error) + lines[0].lstrip()
+            lines[0] = lines[0].lstrip()
+            lines = list(map(escape_text, lines))
+            lines[0] = first_line_prefix + lines[0]
+            lines[-1] = lines[-1] + ' <a href="ignore">Ignore</a>'
 
-            filled_templates.extend([
-                html.escape(line, quote=False).replace(' ', '&nbsp;')
-                for line in lines
-            ])
+            filled_templates += lines
 
         heading = error_type
         count = len(errors_by_type)
@@ -994,6 +999,11 @@ def join_msgs(errors, show_count, width):
             messages='<br />'.join(filled_templates)
         )
     return all_msgs
+
+
+def escape_text(text):
+    # type: (str) -> str
+    return html.escape(text, quote=False).replace(' ', '&nbsp;')
 
 
 from contextlib import contextmanager
