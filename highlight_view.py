@@ -1101,7 +1101,8 @@ def add_eol(pattern, rulename, joiner, pt, view):
     line_content = view.substr(line_region)
     search_pattern = (
         re.escape(pattern.replace("{}", "SENTINEL"))
-        .replace("SENTINEL", "(.*)")
+        .replace("SENTINEL", r"(?P<rules>.*?)")
+        + r"\s*?(#.*|$)"
     )
     match = re.search(search_pattern, line_content)
     if match:
