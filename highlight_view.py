@@ -1071,46 +1071,51 @@ def available_actions_on_line(view, pt):
 def actions_for_error(error, pt):
     # type: (LintError, int) -> Iterator[Action]
     linter_name = error['linter']
+    code = error["code"]
+    if not code:
+        return
     if linter_name == "flake8":
         yield Action(
-            "# noqa: {}".format(error["code"]),
-            partial(
-                add_eol,
-                "  # noqa: {}",
-                error["code"],
-                ", ",
-                pt
-            )
+            "# noqa: {}".format(code),
+            partial(fix_flake8_eol, code, pt)
         )
     elif linter_name == "mypy":
         yield Action(
-            "# type: ignore[{}]".format(error["code"]),
+            "# type: ignore[{}]".format(code),
             partial(
                 add_eol,
                 "  # type: ignore[{}]",
-                error["code"],
                 ", ",
+                "  # type: ignore[(?P<codes>.*)]",
+                code,
                 pt
             )
         )
 
 
-def add_eol(pattern, rulename, joiner, pt, view):
-    # type: (str, str, str, int, sublime.View) -> None
+def fix_flake8_eol(rulename, pt, view):
+    # type: (str, int, sublime.View) -> None
+    add_eol(
+        "  # noqa: {}",
+        ", ",
+        r"(?i)# noqa:[\s]?(?P<codes>[A-Z]+[0-9]+((?:,\s?)[A-Z]+[0-9]+)*)",
+        rulename,
+        pt,
+        view
+    )
+
+
+def add_eol(pattern, joiner, search_pattern, rulename, pt, view):
+    # type: (str, str, str, str, int, sublime.View) -> None
     line_region = view.line(pt)
     line_content = view.substr(line_region)
-    search_pattern = (
-        re.escape(pattern.replace("{}", "SENTINEL"))
-        .replace("SENTINEL", r"(?P<rules>.*?)")
-        + r"\s*?(#.*|$)"
-    )
     match = re.search(search_pattern, line_content)
     if match:
-        present_rules = match.group(1)
+        present_rules = match.group("codes")
         next_rules = [rule.strip() for rule in present_rules.split(joiner.strip())]
         if rulename not in next_rules:
             next_rules.append(rulename)
-        a, b = match.span(1)
+        a, b = match.span("codes")
         replace_view_content(
             view,
             joiner.join(next_rules),
