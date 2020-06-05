@@ -853,7 +853,16 @@ TOOLTIP_STYLES = '''
         color: var(--yellowish);
         font-weight: bold;
     }
-    .copy {
+    .footer {
+         margin-top: 0.5em;
+        font-size: .92em;
+        color: color(var(--background) blend(var(--foreground) 50%));
+    }
+    .ignore {
+        text-decoration: none;
+    }
+    .icon {
+        font-family: sans-serif;
         margin-top: 0.5em;
     }
 '''
@@ -862,7 +871,7 @@ TOOLTIP_TEMPLATE = '''
     <body id="sublimelinter-tooltip">
         <style>{stylesheet}</style>
         <div>{content}</div>
-        <div class="copy"><a href="copy">Copy</a></div>
+        <div class="footer"><a href="copy">Copy</a><span> | Click <span class='icon'>⌫</span> to ignore an error</div>
     </body>
 '''
 
@@ -969,9 +978,18 @@ def join_msgs(errors, show_count, width, pt):
         for error in errors_by_type:
             first_line_prefix = "{linter}: ".format(**error)
             hanging_indent = len(first_line_prefix)
+            first_line_indent = hanging_indent
             if error.get("code"):
-                first_line_prefix += "{code} - ".format(**error)
-            first_line_indent = len(first_line_prefix)
+                action = next(actions_for_error(error, pt), None)
+                if action:
+                    id = uuid.uuid4().hex
+                    quick_actions[id] = action.fn
+                    first_line_prefix += '{code}&nbsp;<a class="ignore icon" href="{action_id}">⌫</a> - '.format(action_id=id, **error)
+                    # first_line_prefix += '<a class="ignore" href="{action_id}">{code}&nbsp;<span class="icon">⌫</span></a> - '.format(action_id=id, **error)
+                    first_line_indent += len(error["code"]) + 5
+                else:
+                    first_line_prefix += "{code} - ".format(**error)
+                    first_line_indent += len(error["code"]) + 3
 
             lines = list(flatten(
                 textwrap.wrap(
@@ -989,11 +1007,6 @@ def join_msgs(errors, show_count, width, pt):
             lines[0] = lines[0].lstrip()
             lines = list(map(escape_text, lines))
             lines[0] = first_line_prefix + lines[0]
-            action = next(actions_for_error(error, pt), None)
-            if action:
-                id = uuid.uuid4().hex
-                quick_actions[id] = action.fn
-                lines[-1] = lines[-1] + ' <a href="{}">Ignore</a>'.format(id)
 
             filled_templates += lines
 
