@@ -5,7 +5,11 @@ from SublimeLinter.tests.mockito import unstub, when
 from SublimeLinter.tests.parameterized import parameterized as p
 
 
-from SublimeLinter.highlight_view import fix_flake8_eol, fix_mypy_eol
+from SublimeLinter.highlight_view import (
+    fix_eslint_next_line,
+    fix_flake8_eol,
+    fix_mypy_eol
+)
 
 
 class TestIgnoreFixers(DeferrableTestCase):
@@ -92,7 +96,6 @@ class TestIgnoreFixers(DeferrableTestCase):
         view_content = view.substr(sublime.Region(0, view.size()))
         self.assertEquals(AFTER, view_content)
 
-
     @p.expand([
         (
             "clean line",
@@ -134,5 +137,45 @@ class TestIgnoreFixers(DeferrableTestCase):
         view = self.create_view(self.window)
         view.run_command("insert", {"characters": BEFORE})
         fix_mypy_eol("no-idea", 4, view)
+        view_content = view.substr(sublime.Region(0, view.size()))
+        self.assertEquals(AFTER, view_content)
+
+    @p.expand([
+        (
+            "clean line",
+            "let |document = node.ownerDocument",
+            "// eslint-disable-next-line semi\nlet document = node.ownerDocument"
+        ),
+        (
+            "handle surrounding whitespace",
+            "  let |document = node.ownerDocument",
+            "  // eslint-disable-next-line semi\n  let document = node.ownerDocument"
+        ),
+        (
+            "extend one given",
+            "// eslint-disable-next-line quote\nlet |document = node.ownerDocument",
+            "// eslint-disable-next-line quote, semi\nlet document = node.ownerDocument"
+        ),
+        (
+            "extend two given",
+            "// eslint-disable-next-line no-alert, quote\nlet |document = node.ownerDocument",
+            "// eslint-disable-next-line no-alert, quote, semi\nlet document = node.ownerDocument"
+        ),
+        (
+            "normalize joiner",
+            "// eslint-disable-next-line no-alert,quote,semi\nlet |document = node.ownerDocument",
+            "// eslint-disable-next-line no-alert, quote, semi\nlet document = node.ownerDocument"
+        ),
+        (
+            "keep existing comment while extending",
+            "// eslint-disable-next-line quote -- some comment\nlet |document = node.ownerDocument",
+            "// eslint-disable-next-line quote, semi -- some comment\nlet document = node.ownerDocument"
+        ),
+    ])
+    def test_eslint(self, _description, BEFORE, AFTER):
+        view = self.create_view(self.window)
+        BEFORE, POS = "".join(BEFORE.split("|")), BEFORE.index("|")
+        view.run_command("insert", {"characters": BEFORE})
+        fix_eslint_next_line("semi", POS, view)
         view_content = view.substr(sublime.Region(0, view.size()))
         self.assertEquals(AFTER, view_content)

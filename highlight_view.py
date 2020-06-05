@@ -1097,7 +1097,12 @@ def actions_for_error(error, pt):
     code = error["code"]
     if not code:
         return
-    if linter_name == "flake8":
+    if linter_name == "eslint":
+        yield Action(
+            "// disable-next-line {}".format(code),
+            partial(fix_eslint_next_line, code, pt)
+        )
+    elif linter_name == "flake8":
         yield Action(
             "# noqa: {}".format(code),
             partial(fix_flake8_eol, code, pt)
@@ -1107,6 +1112,29 @@ def actions_for_error(error, pt):
             "# type: ignore[{}]".format(code),
             partial(fix_mypy_eol, code, pt)
         )
+
+
+def fix_eslint_next_line(rulename, pt, view):
+    # type: (str, int, sublime.View) -> None
+    line = read_line(view, pt)
+    previous_line = read_previous_line(view, line)
+    text_range = (
+        (
+            maybe_replace_ignore_rule(
+                r"// eslint-disable-next-line (?P<codes>[\w-]+(?:,\s?[\w-]+)*)(\s+-{2,})?",
+                ", ",
+                rulename,
+                previous_line
+            )
+            if previous_line
+            else None
+        )
+        or insert_preceding_line(
+            "// eslint-disable-next-line {}".format(rulename),
+            line
+        )
+    )
+    replace_view_content(view, text_range.text, text_range.range)
 
 
 def fix_flake8_eol(rulename, pt, view):
@@ -1157,6 +1185,15 @@ def read_line(view, pt):
     return TextRange(line_content, line_region)
 
 
+def read_previous_line(view, line):
+    # type: (sublime.View, TextRange) -> Optional[TextRange]
+    if line.range.a == 0:
+        return None
+    line_region = view.line(line.range.a - 1)
+    line_content = view.substr(line_region)
+    return TextRange(line_content, line_region)
+
+
 def maybe_replace_ignore_rule(search_pattern, joiner, rulename, line):
     # type: (str, str, str, TextRange) -> Optional[TextRange]
     match = re.search(search_pattern, line.text)
@@ -1180,6 +1217,30 @@ def add_at_eol(text, line):
         text,
         sublime.Region(line.range.a + line_length, line.range.b)
     )
+
+
+def add_at_bol(text, line):
+    # type: (str, TextRange) -> TextRange
+    return TextRange(
+        text,
+        sublime.Region(line.range.a)
+    )
+
+
+def insert_preceding_line(text, line):
+    # type: (str, TextRange) -> TextRange
+    return add_at_bol(indentation(line) + text + "\n", line)
+
+
+def indentation_level(line):
+    # type: (TextRange) -> int
+    return len(line.text) - len(line.text.lstrip())
+
+
+def indentation(line):
+    # type: (TextRange) -> str
+    level = indentation_level(line)
+    return line.text[:level]
 
 
 def maybe_add_before_string(needle, text, line):
