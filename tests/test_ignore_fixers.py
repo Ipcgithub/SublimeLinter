@@ -5,7 +5,7 @@ from SublimeLinter.tests.mockito import unstub, when
 from SublimeLinter.tests.parameterized import parameterized as p
 
 
-from SublimeLinter.highlight_view import add_eol, fix_flake8_eol
+from SublimeLinter.highlight_view import fix_flake8_eol, fix_mypy_eol
 
 
 class TestIgnoreFixers(DeferrableTestCase):
@@ -89,5 +89,50 @@ class TestIgnoreFixers(DeferrableTestCase):
         view = self.create_view(self.window)
         view.run_command("insert", {"characters": BEFORE})
         fix_flake8_eol("E203", 4, view)
+        view_content = view.substr(sublime.Region(0, view.size()))
+        self.assertEquals(AFTER, view_content)
+
+
+    @p.expand([
+        (
+            "clean line",
+            "view = window.new_file()",
+            "view = window.new_file()  # type: ignore[no-idea]"
+        ),
+        (
+            "extend one given",
+            "view = window.new_file()  # type: ignore[attr]",
+            "view = window.new_file()  # type: ignore[attr, no-idea]"
+        ),
+        (
+            "extend two given",
+            "view = window.new_file()  # type: ignore[attr, import]",
+            "view = window.new_file()  # type: ignore[attr, import, no-idea]",
+        ),
+        (
+            "normalize joiner",
+            "view = window.new_file()  # type: ignore[attr,import]",
+            "view = window.new_file()  # type: ignore[attr, import, no-idea]",
+        ),
+        (
+            "handle surrounding whitespace",
+            "    view = window.new_file()  ",
+            "    view = window.new_file()  # type: ignore[no-idea]"
+        ),
+        (
+            "mypy comment must come before existing comment",
+            "view = window.new_file()  # comment ",
+            "view = window.new_file()  # type: ignore[no-idea]  # comment ",
+        ),
+        (
+            "keep existing comment while extending",
+            "view = window.new_file()  # type: ignore[attr]  # comment ",
+            "view = window.new_file()  # type: ignore[attr, no-idea]  # comment ",
+        ),
+    ])
+    def test_mypy(self, _description, BEFORE, AFTER):
+        view = self.create_view(self.window)
+        view.run_command("insert", {"characters": BEFORE})
+        fix_mypy_eol("no-idea", 4, view)
         view_content = view.substr(sublime.Region(0, view.size()))
         self.assertEquals(AFTER, view_content)

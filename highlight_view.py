@@ -1020,9 +1020,11 @@ from contextlib import contextmanager
 if MYPY:
     from typing import Iterator, NamedTuple
     Action = NamedTuple("Action", [("description", str), ("fn", Callable)])
+    TextRange = NamedTuple("TextRange", [("text", str), ("range", sublime.Region)])
 else:
     from collections import namedtuple
     Action = namedtuple("Action", "description fn")
+    TextRange = namedtuple("TextRange", "text range")
 
 
 class sl_fix_by_ignoring(sublime_plugin.TextCommand):
@@ -1082,51 +1084,93 @@ def actions_for_error(error, pt):
     elif linter_name == "mypy":
         yield Action(
             "# type: ignore[{}]".format(code),
-            partial(
-                add_eol,
-                "  # type: ignore[{}]",
-                ", ",
-                "  # type: ignore[(?P<codes>.*)]",
-                code,
-                pt
-            )
+            partial(fix_mypy_eol, code, pt)
         )
 
 
 def fix_flake8_eol(rulename, pt, view):
     # type: (str, int, sublime.View) -> None
-    add_eol(
-        "  # noqa: {}",
-        ", ",
-        r"(?i)# noqa:[\s]?(?P<codes>[A-Z]+[0-9]+((?:,\s?)[A-Z]+[0-9]+)*)",
-        rulename,
-        pt,
-        view
+    line = read_line(view, pt)
+    text_range = (
+        maybe_replace_ignore_rule(
+            r"(?i)# noqa:[\s]?(?P<codes>[A-Z]+[0-9]+((?:,\s?)[A-Z]+[0-9]+)*)",
+            ", ",
+            rulename,
+            line
+        )
+        or add_at_eol(
+            "  # noqa: {}".format(rulename),
+            line
+        )
     )
+    replace_view_content(view, text_range.text, text_range.range)
 
 
-def add_eol(pattern, joiner, search_pattern, rulename, pt, view):
-    # type: (str, str, str, str, int, sublime.View) -> None
+def fix_mypy_eol(rulename, pt, view):
+    # type: (str, int, sublime.View) -> None
+    line = read_line(view, pt)
+    text_range = (
+        maybe_replace_ignore_rule(
+            r"  # type: ignore\[(?P<codes>.*)\]",
+            ", ",
+            rulename,
+            line
+        )
+        or maybe_add_before_string(
+            "  # ",
+            "  # type: ignore[{}]".format(rulename),
+            line
+        )
+        or add_at_eol(
+            "  # type: ignore[{}]".format(rulename),
+            line
+        )
+    )
+    replace_view_content(view, text_range.text, text_range.range)
+
+
+def read_line(view, pt):
+    # type: (sublime.View, int) -> TextRange
     line_region = view.line(pt)
     line_content = view.substr(line_region)
-    match = re.search(search_pattern, line_content)
+    return TextRange(line_content, line_region)
+
+
+def maybe_replace_ignore_rule(search_pattern, joiner, rulename, line):
+    # type: (str, str, str, TextRange) -> Optional[TextRange]
+    match = re.search(search_pattern, line.text)
     if match:
         present_rules = match.group("codes")
         next_rules = [rule.strip() for rule in present_rules.split(joiner.strip())]
         if rulename not in next_rules:
             next_rules.append(rulename)
         a, b = match.span("codes")
-        replace_view_content(
-            view,
+        return TextRange(
             joiner.join(next_rules),
-            sublime.Region(line_region.a + a, line_region.a + b)
+            sublime.Region(line.range.a + a, line.range.a + b)
         )
+    return None
+
+
+def add_at_eol(text, line):
+    # type: (str, TextRange) -> TextRange
+    line_length = len(line.text.rstrip())
+    return TextRange(
+        text,
+        sublime.Region(line.range.a + line_length, line.range.b)
+    )
+
+
+def maybe_add_before_string(needle, text, line):
+    # type: (str, str, TextRange) -> Optional[TextRange]
+    try:
+        start = line.text.index(needle)
+    except ValueError:
+        return None
     else:
-        line_length = len(line_content.rstrip())
-        replace_view_content(
-            view,
-            pattern.format(rulename),
-            sublime.Region(line_region.a + line_length, line_region.b)
+        return TextRange(
+            text,
+            sublime.Region(line.range.a + start)
         )
 
 
