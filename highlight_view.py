@@ -1121,7 +1121,7 @@ def fix_eslint_next_line(rulename, pt, view):
     text_range = (
         (
             maybe_replace_ignore_rule(
-                r"// eslint-disable-next-line (?P<codes>[\w-]+(?:,\s?[\w-]+)*)(\s+-{2,})?",
+                r"// eslint-disable-next-line (?P<codes>[\w\-/]+(?:,\s?[\w\-/]+)*)(\s+-{2,})?",
                 ", ",
                 rulename,
                 previous_line

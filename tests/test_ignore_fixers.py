@@ -171,6 +171,11 @@ class TestIgnoreFixers(DeferrableTestCase):
             "// eslint-disable-next-line quote -- some comment\nlet |document = node.ownerDocument",
             "// eslint-disable-next-line quote, semi -- some comment\nlet document = node.ownerDocument"
         ),
+        (
+            "recognize plugin rules",
+            "// eslint-disable-next-line plugin/quote\nlet |document = node.ownerDocument",
+            "// eslint-disable-next-line plugin/quote, semi\nlet document = node.ownerDocument"
+        ),
     ])
     def test_eslint(self, _description, BEFORE, AFTER):
         view = self.create_view(self.window)
